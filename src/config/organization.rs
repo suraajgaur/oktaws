@@ -22,6 +22,8 @@ use toml;
 use tracing::{debug, error, instrument};
 use whoami::username;
 
+const DEFAULT_BATCH_CONCURRENCY: usize = 10;
+
 /// This is an intentionally 'loose' struct,
 /// representing the potential for overrides and later prompts
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -30,6 +32,7 @@ pub struct Config {
     pub roles: Option<Vec<String>>,
     pub role: Option<String>,
     pub duration_seconds: Option<i32>,
+    pub batch_concurrency: Option<usize>,
     pub profiles: IndexMap<String, profile::Config>,
 }
 
@@ -94,6 +97,7 @@ impl Config {
             Ok(Self {
                 username: Some(username),
                 duration_seconds: None,
+                batch_concurrency: None,
                 role: None,
                 roles: None,
                 profiles,
@@ -102,6 +106,7 @@ impl Config {
             Ok(Self {
                 username: Some(username),
                 duration_seconds: None,
+                batch_concurrency: None,
                 role: default_roles.first().cloned(),
                 roles: None,
                 profiles,
@@ -110,6 +115,7 @@ impl Config {
             Ok(Self {
                 username: Some(username),
                 duration_seconds: None,
+                batch_concurrency: None,
                 role: None,
                 roles: Some(default_roles),
                 profiles,
@@ -124,6 +130,7 @@ impl Config {
 pub struct Organization {
     pub name: String,
     pub username: String,
+    pub batch_concurrency: usize,
     pub profiles: Vec<Profile>,
 }
 
@@ -171,6 +178,9 @@ impl TryFrom<&Path> for Organization {
         Ok(Self {
             name: filename,
             username,
+            batch_concurrency: cfg
+                .batch_concurrency
+                .unwrap_or(DEFAULT_BATCH_CONCURRENCY),
             profiles,
         })
     }
@@ -203,6 +213,7 @@ impl Organization {
         filter: glob::Pattern,
         role_override: Option<&String>,
     ) -> impl Iterator<Item = (String, Credentials)> {
+        let batch_concurrency = self.batch_concurrency;
         let futures = self.into_profiles(filter).map(|profile| async {
             (
                 profile.name.clone(),
@@ -211,7 +222,7 @@ impl Organization {
         });
 
         stream::iter(futures)
-            .buffer_unordered(10) // Only run 10 concurrently at a time
+            .buffer_unordered(batch_concurrency)
             .collect::<Vec<_>>()
             .await
             .into_iter()

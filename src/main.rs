@@ -283,6 +283,7 @@ async fn init(options: Init) -> Result<()> {
         roles: organization_config.roles.clone(),
         role: organization_config.role.clone(),
         duration_seconds: organization_config.duration_seconds,
+        batch_concurrency: organization_config.batch_concurrency,
         profiles: federated_profiles,
     };
 
